@@ -147,8 +147,10 @@ function Install-AgenticWindows {
 
     # ── Install Hermes Agent ──
     Write-Step "Installing Hermes Agent"
-    if (Get-Command "hermes" -ErrorAction SilentlyContinue) {
-        Write-Good "Hermes Agent already installed ($(hermes --version 2>$null))"
+    $hermesCmd = Get-Command "hermes" -ErrorAction SilentlyContinue
+    if ($hermesCmd) {
+        $hermesVersion = & $hermesCmd --version 2>&1 | Out-String
+        Write-Good "Hermes Agent already installed ($($hermesVersion.Trim()))"
     } else {
         Write-Info "Downloading and running Hermes installer..."
         try {
@@ -164,8 +166,10 @@ function Install-AgenticWindows {
         }
     }
 
-    # Refresh PATH to find hermes
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+    # Refresh PATH to find hermes — append to existing, don't replace
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $env:Path = "$env:Path;$userPath;$machinePath"
 
     # ── Install OpenCode ──
     if (-not $SkipTools) {
@@ -189,16 +193,16 @@ function Install-AgenticWindows {
 
         # Check for other dev tools
         $tools = @(
-            @{Name="Python"; Command="python --version"},
-            @{Name="Node.js"; Command="node --version"},
-            @{Name="Git"; Command="git --version"}
+            @{Name="Python";     Cmd="python --version";   Winget="Python.Python.3.13"},
+            @{Name="Node.js";    Cmd="node --version";     Winget="OpenJS.NodeJS"},
+            @{Name="Git";        Cmd="git --version";      Winget="Git.Git"}
         )
         foreach ($tool in $tools) {
-            $result = & cmd /c "$($tool.Command)" 2>$null
+            $result = & cmd /c "$($tool.Cmd)" 2>$null
             if ($LASTEXITCODE -eq 0) {
                 Write-Good "$($tool.Name): $($result.Trim())"
             } else {
-                Write-Info "$($tool.Name) not found. Install via winget: winget install $($tool.Name)"
+                Write-Info "$($tool.Name) not found. Install: winget install $($tool.Winget)"
             }
         }
     }
@@ -256,7 +260,7 @@ function Install-AgenticWindows {
 
     # Download dashboard
     if (-not $SkipDashboard) {
-        $dashboardFiles = @("index.html", "style.css", "app.js")
+        $dashboardFiles = @("index.html", "server.py")
         foreach ($df in $dashboardFiles) {
             $dfUrl = "$REPO_URL/src/Dashboard/$df"
             if (Download-File $dfUrl "$targetDir\Dashboard\$df") {
@@ -357,12 +361,14 @@ Write-Host "⚡ Agentic Windows active. Try: agent, sys-health, agent-dash" -For
     # ── Final steps ──
     Write-Step "Finalizing installation"
 
-    # Try to start the tray app
+    # Try to start the tray app immediately
+    # (If running as admin, the tray runs with admin privileges — acceptable for v1)
     try {
-        $trayProcess = Start-Process -WindowStyle Hidden -FilePath "powershell" -ArgumentList "-ExecutionPolicy Bypass -File `"$targetDir\agent-tray.ps1`"" -PassThru
+        Start-Process -WindowStyle Hidden -FilePath "powershell" `
+            -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetDir\agent-tray.ps1`""
         Write-Good "Agent tray app started"
     } catch {
-        Write-Warn "Could not start tray app. Reboot to activate."
+        Write-Info "Tray app will start on next login (configured in registry autostart)"
     }
 
     # ── Summary ──

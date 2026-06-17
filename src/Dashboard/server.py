@@ -171,13 +171,17 @@ def collect_system_info():
 def chat_with_hermes(message):
     """Send a message to Hermes and get the response."""
     try:
-        # Build the command — keep it simple
-        cmd = f'{HERMES_CMD} --no-interactive "{message}"'
-
-        # Escape for PowerShell
-        safe_msg = message.replace('"', '`"')
-        ps_cmd = f'& {HERMES_CMD} --no-interactive "{safe_msg}"'
-
+        # Use a temp PowerShell wrapper that pipes the message into hermes
+        escaped = message.replace("'", "''")
+        ps_cmd = f'''
+$msg = '{escaped}'
+try {{
+    $result = $msg | & hermes run 2>&1
+    Write-Output $result
+}} catch {{
+    Write-Error $_.Exception.Message
+}}
+'''
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
             capture_output=True, text=True, timeout=120,
