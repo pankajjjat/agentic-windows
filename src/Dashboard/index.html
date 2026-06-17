@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Windows — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-card: #13131a;
+  --bg-card-hover: #1a1a24;
+  --bg-input: #1a1a24;
+  --border: #2a2a3a;
+  --border-active: #4a4a6a;
+  --text-primary: #e8e8ed;
+  --text-secondary: #8888a0;
+  --text-muted: #555570;
+  --accent: #4a8eff;
+  --accent-glow: rgba(74, 142, 255, 0.15);
+  --green: #34d399;
+  --yellow: #fbbf24;
+  --red: #f87171;
+  --orange: #fb923c;
+  --gradient: linear-gradient(135deg, #4a8eff 0%, #7c3aed 100%);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Sidebar */
+.sidebar {
+  width: 240px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.sidebar-logo {
+  padding: 0 20px 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar-logo h1 {
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.sidebar-logo p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.sidebar-nav { flex: 1; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+}
+.nav-item:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.nav-item.active {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+.nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.status-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+/* Main content */
+.main {
+  flex: 1;
+  padding: 24px 32px;
+  max-width: 1200px;
+  overflow-y: auto;
+}
+.main h2 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.main .subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+/* Grid cards */
+.grid4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  transition: all 0.15s;
+}
+.card:hover { border-color: var(--border-active); }
+.card .label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.card .value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.card .sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.card .bar-container {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.card .bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s;
+}
+.bar-green { background: var(--green); }
+.bar-yellow { background: var(--yellow); }
+.bar-red { background: var(--red); }
+.bar-accent { background: var(--accent); }
+
+/* Chat area */
+.chat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 400px;
+}
+.chat-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.chat-messages {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.msg {
+  padding: 10px 14px;
+  border-radius: 10px;
+  max-width: 85%;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.msg.user {
+  background: var(--accent);
+  color: #fff;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+.msg.agent {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  border: 1px solid var(--border);
+}
+.msg.typing { color: var(--text-muted); font-style: italic; }
+.chat-input-area {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+.chat-input-area input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  outline: none;
+  transition: border 0.15s;
+}
+.chat-input-area input:focus { border-color: var(--accent); }
+.chat-input-area button {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chat-input-area button:hover { opacity: 0.9; }
+
+/* Quick actions */
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.action-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.action-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: var(--accent-glow);
+}
+.action-btn .emoji { font-size: 20px; display: block; margin-bottom: 4px; }
+
+/* Logs */
+.logs-area {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  height: 120px;
+  overflow-y: auto;
+  line-height: 1.8;
+}
+.logs-area .time { color: var(--text-muted); }
+.logs-area .info { color: var(--accent); }
+.logs-area .good { color: var(--green); }
+.logs-area .warn { color: var(--yellow); }
+.logs-area .err { color: var(--red); }
+
+/* Process list table */
+.process-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.process-list th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+.process-list td {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(42,42,58,0.5);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.process-list tr:hover td { background: var(--bg-card-hover); }
+
+/* Sections */
+.section { display: none; }
+.section.active { display: block; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══ -->
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <h1>⚡ Agentic Windows</h1>
+    <p>v1.0 · Agent-driven OS</p>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-item active" data-section="overview">
+      <span class="icon">📊</span> Overview
+    </div>
+    <div class="nav-item" data-section="chat">
+      <span class="icon">💬</span> Agent Chat
+    </div>
+    <div class="nav-item" data-section="processes">
+      <span class="icon">⚙️</span> Processes
+    </div>
+    <div class="nav-item" data-section="logs">
+      <span class="icon">📋</span> System Logs
+    </div>
+    <div class="nav-item" data-section="skills">
+      <span class="icon">🧠</span> Agent Skills
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <div><span class="status-dot online" id="agentStatusDot"></span><span id="agentStatus">Agent Online</span></div>
+    <div style="margin-top:6px">Made by Pankaj · MIT License</div>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div class="main">
+
+  <!-- OVERVIEW -->
+  <div class="section active" id="sec-overview">
+    <h2>System Overview</h2>
+    <p class="subtitle">Real-time agent-managed system status</p>
+
+    <div class="grid4">
+      <div class="card">
+        <div class="label">CPU Usage</div>
+        <div class="value" id="cpuValue">--</div>
+        <div class="sub">Last 60s</div>
+        <div class="bar-container"><div class="bar bar-green" id="cpuBar" style="width:0%"></div></div>
+      </div>
+      <div class="card">
+        <div class="label">Memory</div>
+        <div class="value" id="memValue">--</div>
+        <div class="sub">of 16 GB</div>
+        <div class="bar-container"><div class="bar bar-accent" id="memBar" style="width:0%"></div></div>
+      </div>
+      <div class="card">
+        <div class="label">Disk C:\</div>
+        <div class="value" id="diskValue">--</div>
+        <div class="sub" id="diskDetail">loading...</div>
+        <div class="bar-container"><div class="bar bar-green" id="diskBar" style="width:0%"></div></div>
+      </div>
+      <div class="card">
+        <div class="label">Uptime</div>
+        <div class="value" id="uptimeValue">--</div>
+        <div class="sub">Since last boot</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="label">Quick Actions</div>
+        <div style="margin-top:8px">
+          <div class="actions-grid">
+            <button class="action-btn" onclick="sendCommand('Check system health')">
+              <span class="emoji">🩺</span>Health Check
+            </button>
+            <button class="action-btn" onclick="sendCommand('Free up disk space')">
+              <span class="emoji">🧹</span>Clean Disk
+            </button>
+            <button class="action-btn" onclick="sendCommand('Monitor memory usage')">
+              <span class="emoji">🧠</span>Memory Check
+            </button>
+            <button class="action-btn" onclick="sendCommand('Check network status')">
+              <span class="emoji">🌐</span>Network
+            </button>
+            <button class="action-btn" onclick="sendCommand('Check for Windows updates')">
+              <span class="emoji">🔄</span>Updates
+            </button>
+            <button class="action-btn" onclick="sendCommand('Show running processes sorted by RAM')">
+              <span class="emoji">⚙️</span>Top Processes
+            </button>
+            <button class="action-btn" onclick="openDashboard()">
+              <span class="emoji">🖥️</span>Hermes UI
+            </button>
+            <button class="action-btn" onclick="location.reload()">
+              <span class="emoji">🔄</span>Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:0">
+        <div class="logs-area" id="liveLogs">
+          <div><span class="time">[--:--:--]</span> <span class="info">Agent initialized</span></div>
+          <div><span class="time">[--:--:--]</span> <span class="info">Waiting for data...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div class="section" id="sec-chat">
+    <h2>Agent Chat</h2>
+    <p class="subtitle">Talk to your agent naturally. Ask anything about your system.</p>
+    <div class="chat-card">
+      <div class="chat-header">
+        <span>💬 Agent Session</span>
+        <span style="font-size:11px;color:var(--text-muted)">Powered by Hermes</span>
+      </div>
+      <div class="chat-messages" id="chatMessages">
+        <div class="msg agent">👋 Hello! I'm your **Agentic Windows** assistant. I can help you manage your system, run health checks, install tools, and automate tasks.
+
+Try asking: "How is my system doing?" or "Show me running processes"</div>
+      </div>
+      <div class="chat-input-area">
+        <input type="text" id="chatInput" placeholder="Ask the agent anything..." autocomplete="off">
+        <button onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROCESSES -->
+  <div class="section" id="sec-processes">
+    <h2>Running Processes</h2>
+    <p class="subtitle">Top processes sorted by memory usage</p>
+    <div class="card" style="padding:0">
+      <div class="process-list">
+        <table>
+          <thead><tr><th>PID</th><th>Process Name</th><th>Memory</th><th>CPU</th><th>Actions</th></tr></thead>
+          <tbody id="processTableBody">
+            <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Loading processes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <button class="action-btn" style="flex:1" onclick="sendCommand('Show running processes with memory usage')">🔄 Refresh Process List</button>
+      <button class="action-btn" style="flex:1" onclick="sendCommand('Kill all browser processes if memory is high')">🧹 Clean High-Memory Processes</button>
+    </div>
+  </div>
+
+  <!-- LOGS -->
+  <div class="section" id="sec-logs">
+    <h2>System Logs</h2>
+    <p class="subtitle">Recent agent activity and system events</p>
+    <div class="card" style="padding:0">
+      <div class="logs-area" id="fullLogs" style="height:400px">
+        <div><span class="time">[--:--:--]</span> <span class="info">Loading logs...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SKILLS -->
+  <div class="section" id="sec-skills">
+    <h2>Agent Skills</h2>
+    <p class="subtitle">Pre-loaded system management capabilities</p>
+    <div class="grid2" id="skillsGrid">
+      <div class="card" onclick="sendCommand('Run system-health skill')">
+        <div class="label">🩺 System Health</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin:6px 0">
+          CPU, RAM, disk, temps, uptime. Ask "How's my PC doing?"
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">system-health.md</div>
+      </div>
+      <div class="card" onclick="sendCommand('Run disk-guardian skill')">
+        <div class="label">🧹 Disk Guardian</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin:6px 0">
+          Monitors free space, auto-cleans temp/cache when low.
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">disk-guardian.md</div>
+      </div>
+      <div class="card" onclick="sendCommand('Run process-manager skill')">
+        <div class="label">⚙️ Process Manager</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin:6px 0">
+          List, kill, prioritize processes. "Kill Chrome" works.
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">process-manager.md</div>
+      </div>
+      <div class="card" onclick="sendCommand('Run memory-watchdog skill')">
+        <div class="label">🧠 Memory Watchdog</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin:6px 0">
+          Detects leaks, clears standby memory automatically.
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">memory-watchdog.md</div>
+      </div>
+      <div class="card" onclick="sendCommand('Run network-monitor skill')">
+        <div class="label">🌐 Network Monitor</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin:6px 0">
+          IP info, connection stats, DNS management.
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">network-monitor.md</div>
+      </div>
+      <div class="card" onclick="sendCommand('Run update-manager skill')">
+        <div class="label">🔄 Update Manager</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin:6px 0">
+          Check/install Windows updates via agent.
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">update-manager.md</div>
+      </div>
+      <div class="card" onclick="sendCommand('Run dev-quickstart skill')">
+        <div class="label">🚀 Dev Quickstart</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin:6px 0">
+          Scaffold projects, install dev tooling, configure environments.
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">dev-quickstart.md</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// Dashboard State
+// ══════════════════════════════════════════════════════════
+const state = {
+  cpu: 0,
+  mem: { used: 0, total: 16 },
+  disk: { used: 0, total: 0, free: 0, pct: 0 },
+  uptime: 0,
+  processes: [],
+  logs: [],
+  chatHistory: []
+};
+
+// ══════════════════════════════════════════════════════════
+// Navigation
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('sec-' + item.dataset.section).classList.add('active');
+  });
+});
+
+// ══════════════════════════════════════════════════════════
+// Chat via PowerShell backend (Hermes CLI)
+// ══════════════════════════════════════════════════════════
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  const chatMessages = document.getElementById('chatMessages');
+  addMessage('user', msg);
+
+  // Show typing indicator
+  const typing = addMessage('agent', '🤔 Thinking...', 'typing');
+
+  // Send to Hermes via the backend endpoint
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg })
+  })
+  .then(r => r.json())
+  .then(data => {
+    typing.remove();
+    addMessage('agent', data.response || 'No response from agent.');
+    if (data.commands) {
+      data.commands.forEach(cmd => executeCommand(cmd));
+    }
+  })
+  .catch(err => {
+    typing.remove();
+    addMessage('agent', `⚠️ Could not reach agent. Make sure Hermes is running.\n\n**Error**: ${err.message}\n\nYou can still try: run \`hermes "${msg}"\` in PowerShell directly.`);
+  });
+}
+
+function addMessage(role, text, cls = '') {
+  const div = document.createElement('div');
+  div.className = `msg ${role} ${cls}`;
+  div.textContent = text;
+  document.getElementById('chatMessages').appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth' });
+  return div;
+}
+
+// ══════════════════════════════════════════════════════════
+// Send command (from quick actions)
+// ══════════════════════════════════════════════════════════
+function sendCommand(cmd) {
+  // Switch to chat
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelector('[data-section="chat"]').classList.add('active');
+  document.getElementById('sec-chat').classList.add('active');
+
+  document.getElementById('chatInput').value = cmd;
+  sendChat();
+}
+
+function openDashboard() {
+  window.open('http://localhost:4774', '_blank');
+}
+
+// ══════════════════════════════════════════════════════════
+// System info via PowerShell backend
+// ══════════════════════════════════════════════════════════
+function fetchSystemInfo() {
+  fetch('/api/system')
+    .then(r => r.json())
+    .then(data => {
+      if (!data) return;
+
+      // CPU
+      if (data.cpu != null) {
+        state.cpu = data.cpu;
+        document.getElementById('cpuValue').textContent = data.cpu.toFixed(1) + '%';
+        document.getElementById('cpuBar').style.width = data.cpu + '%';
+        const cpuBar = document.getElementById('cpuBar');
+        cpuBar.className = 'bar ' + (data.cpu > 80 ? 'bar-red' : data.cpu > 50 ? 'bar-yellow' : 'bar-green');
+      }
+
+      // Memory
+      if (data.memory) {
+        const used = data.memory.usedGB || 0;
+        const total = data.memory.totalGB || 16;
+        const pct = total > 0 ? (used / total * 100) : 0;
+        state.mem = { used, total };
+        document.getElementById('memValue').textContent = used.toFixed(1) + ' GB';
+        document.getElementById('memBar').style.width = pct + '%';
+        document.getElementById('memValue').nextElementSibling.textContent = `of ${total.toFixed(0)} GB`;
+        const memBar = document.getElementById('memBar');
+        memBar.className = 'bar ' + (pct > 85 ? 'bar-red' : pct > 65 ? 'bar-yellow' : 'bar-accent');
+      }
+
+      // Disk
+      if (data.disk) {
+        const d = data.disk;
+        state.disk = d;
+        document.getElementById('diskValue').textContent = d.usedGB + ' GB';
+        document.getElementById('diskDetail').textContent = `${d.freeGB} GB free of ${d.totalGB} GB`;
+        document.getElementById('diskBar').style.width = d.pct + '%';
+        const diskBar = document.getElementById('diskBar');
+        diskBar.className = 'bar ' + (d.pct > 90 ? 'bar-red' : d.pct > 75 ? 'bar-yellow' : 'bar-green');
+      }
+
+      // Uptime
+      if (data.uptime) {
+        state.uptime = data.uptime;
+        document.getElementById('uptimeValue').textContent = data.uptime;
+      }
+
+      // Processes
+      if (data.processes && data.processes.length > 0) {
+        state.processes = data.processes;
+        renderProcesses(data.processes);
+      }
+
+      // Update agent status
+      if (data.agentStatus) {
+        document.getElementById('agentStatus').textContent = data.agentStatus;
+        const dot = document.getElementById('agentStatusDot');
+        dot.className = 'status-dot ' + (data.agentStatus === 'Agent Online' ? 'online' : '');
+      }
+    })
+    .catch(() => {
+      // Agent not available — show static data from last fetch
+    });
+}
+
+function renderProcesses(processes) {
+  const tbody = document.getElementById('processTableBody');
+  if (!processes || processes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">No process data available</td></tr>';
+    return;
+  }
+  // Sort by memory descending
+  processes.sort((a, b) => b.memoryMB - a.memoryMB);
+  const top = processes.slice(0, 20);
+  tbody.innerHTML = top.map(p => `
+    <tr>
+      <td>${p.pid}</td>
+      <td>${p.name}</td>
+      <td>${p.memoryMB} MB</td>
+      <td>${(p.cpu || 0).toFixed(1)}%</td>
+      <td><a href="#" onclick="sendCommand('Kill process ${p.pid} (${p.name})');return false" style="color:var(--red);font-size:11px">Kill</a></td>
+    </tr>
+  `).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+// Polling
+// ══════════════════════════════════════════════════════════
+// Poll every 5 seconds
+setInterval(fetchSystemInfo, 5000);
+
+// Initial fetch
+fetchSystemInfo();
+
+// Also try after a delay for the backend to be ready
+setTimeout(fetchSystemInfo, 1000);
+
+// Chat with Enter key
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+</script>
+</body>
+</html>
