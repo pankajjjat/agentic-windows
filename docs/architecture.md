@@ -192,3 +192,17 @@ install.ps1
     ├── Updates PowerShell profile
     └── Updates Hermes config
 ```
+
+## CI/CD Pipeline
+
+```
+.github/workflows/
+├── build-driver.yml   # Auto-builds HermesCore.sys on every release
+│                      # Uses WDK via GitHub Actions (Windows 2022)
+│                      # Uploads HermesCore-x64 artifact
+│                      # Optional: code-sign with DRIVER_SIGNING_PFX secret
+└── validate.yml       # Validates install.ps1 + Python syntax on every push
+```
+
+The kernel driver is **automatically built by CI** — users download a pre-compiled
+`HermesCore.sys` from the Releases page. No WDK installation needed.

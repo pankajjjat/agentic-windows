@@ -4,9 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agentic Windows — Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+@font-face {
+  font-family: 'Inter';
+  src: local('Segoe UI Variable Display'), local('Segoe UI'), local('system-ui');
+  font-weight: 300 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('Cascadia Code'), local('Fira Code'), local('Consolas'), local('monospace');
+  font-weight: 400 600;
+  font-style: normal;
+}
 :root {
   --bg-primary: #0a0a0f;
   --bg-card: #13131a;
@@ -27,7 +37,7 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: system-ui, -apple-system, 'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
@@ -147,7 +157,7 @@ a:hover { text-decoration: underline; }
 .card .value {
   font-size: 24px;
   font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
 }
 .card .sub {
   font-size: 12px;
@@ -282,7 +292,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
   font-size: 11px;
   color: var(--text-secondary);
   height: 120px;
@@ -314,7 +324,7 @@ a:hover { text-decoration: underline; }
 .process-list td {
   padding: 6px 12px;
   border-bottom: 1px solid rgba(42,42,58,0.5);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
   font-size: 12px;
 }
 .process-list tr:hover td { background: var(--bg-card-hover); }
@@ -574,38 +584,114 @@ document.querySelectorAll('.nav-item').forEach(item => {
 });
 
 // ══════════════════════════════════════════════════════════
-// Chat via PowerShell backend (Hermes CLI)
+// Chat via SSE streaming (realtime) + POST fallback
 // ══════════════════════════════════════════════════════════
+let activeStreamController = null;
+
 function sendChat() {
   const input = document.getElementById('chatInput');
   const msg = input.value.trim();
   if (!msg) return;
   input.value = '';
 
-  const chatMessages = document.getElementById('chatMessages');
   addMessage('user', msg);
 
-  // Show typing indicator
-  const typing = addMessage('agent', '🤔 Thinking...', 'typing');
+  // Remove old typing indicator if any
+  const oldTyping = document.querySelector('.msg.typing');
+  if (oldTyping) oldTyping.remove();
 
-  // Send to Hermes via the backend endpoint
+  // Show streaming message area
+  const agents = document.getElementById('chatMessages');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'msg agent';
+  agents.appendChild(msgDiv);
+
+  // Try SSE first (realtime streaming), fallback to POST
+  trySseChat(msg, msgDiv);
+}
+
+function trySseChat(msg, msgDiv) {
+  // SSE via GET + EventSource
+  const url = '/api/chat/stream?message=' + encodeURIComponent(msg);
+  let fullText = '';
+  let connected = false;
+
+  // Use fetch with streaming for wider compatibility
+  fetch(url)
+    .then(response => {
+      if (!response.ok) throw new Error('SSE unavailable');
+      connected = true;
+      msgDiv.textContent = '';
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      function processStream({ done, value }) {
+        if (done) {
+          // Final render
+          if (fullText) msgDiv.textContent = fullText;
+          return;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // incomplete line
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(payload);
+              if (evt.type === 'token' && evt.text) {
+                fullText += evt.text + '\n';
+                msgDiv.textContent = fullText;
+              } else if (evt.type === 'error') {
+                msgDiv.textContent = evt.text;
+              }
+              // type='done' / 'start' — no UI update needed
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }
+        return reader.read().then(processStream);
+      }
+
+      return reader.read().then(processStream);
+    })
+    .catch(() => {
+      // SSE failed — fall back to POST
+      if (!connected) tryPostChat(msg, msgDiv);
+    });
+}
+
+function tryPostChat(msg, msgDiv) {
+  msgDiv.textContent = '🤔 Waiting for agent...';
   fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: msg })
   })
-  .then(r => r.json())
-  .then(data => {
-    typing.remove();
-    addMessage('agent', data.response || 'No response from agent.');
-    if (data.commands) {
-      data.commands.forEach(cmd => executeCommand(cmd));
-    }
-  })
-  .catch(err => {
-    typing.remove();
-    addMessage('agent', `⚠️ Could not reach agent. Make sure Hermes is running.\n\n**Error**: ${err.message}\n\nYou can still try: run \`hermes "${msg}"\` in PowerShell directly.`);
-  });
+    .then(r => r.json())
+    .then(data => {
+      msgDiv.textContent = data.response || 'No response from agent.';
+      if (data.commands) {
+        data.commands.forEach(cmd => {
+          if (cmd.type === 'skill') {
+            const runBtn = document.createElement('button');
+            runBtn.className = 'action-btn';
+            runBtn.style.marginTop = '8px';
+            runBtn.textContent = `▶️ Run ${cmd.name}`;
+            runBtn.onclick = () => sendCommand(`Run ${cmd.name} skill`);
+            document.getElementById('chatMessages').appendChild(runBtn);
+          }
+        });
+      }
+    })
+    .catch(err => {
+      msgDiv.textContent = `⚠️ Could not reach agent. Error: ${err.message}`;
+    });
 }
 
 function addMessage(role, text, cls = '') {

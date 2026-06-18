@@ -179,15 +179,31 @@ function Install-AgenticWindows {
             Write-Good "OpenCode already installed"
         } else {
             if (Get-Command "npm" -ErrorAction SilentlyContinue) {
+                # Ensure npm uses a user-writable prefix (avoids admin requirement)
+                $npmRoot = npm root -g 2>$null
+                if (-not $npmRoot -or $npmRoot -match "Program Files") {
+                    $userNpmPrefix = "$env:APPDATA\npm"
+                    if (-not (Test-Path $userNpmPrefix)) { New-Item -ItemType Directory -Path $userNpmPrefix -Force | Out-Null }
+                    npm config set prefix "$userNpmPrefix" 2>$null
+                    # Add to PATH if not already there
+                    if ($env:Path -notlike "*$userNpmPrefix*") {
+                        $env:Path = "$userNpmPrefix;$env:Path"
+                        [Environment]::SetEnvironmentVariable("Path", "$userNpmPrefix;$([Environment]::GetEnvironmentVariable('Path', 'User'))", "User")
+                    }
+                    Write-Info "Configured npm to use user prefix: $userNpmPrefix"
+                }
+
                 Write-Info "Installing OpenCode (npm install -g opencode-ai)..."
-                npm install -g opencode-ai 2>$null
-                if ($LASTEXITCODE -eq 0) {
+                $opencodeOutput = npm install -g opencode-ai 2>&1
+                $opencodeExit = $LASTEXITCODE
+                if ($opencodeExit -eq 0) {
                     Write-Good "OpenCode installed globally"
                 } else {
-                    Write-Warn "OpenCode installation had issues. You can run 'npm install -g opencode-ai' later."
+                    Write-Warn "OpenCode install had issues (exit $opencodeExit): $($opencodeOutput | Out-String)"
+                    Write-Info "  Run manually: 'npm install -g opencode-ai' from a normal (non-admin) shell."
                 }
             } else {
-                Write-Warn "npm not found. Install Node.js first, then run: npm install -g opencode-ai"
+                Write-Warn "npm not found. Install Node.js first: winget install OpenJS.NodeJS.LTS"
             }
         }
 

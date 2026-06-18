@@ -1,0 +1,64 @@
+name: Validate Install Script
+
+on:
+  push:
+    paths:
+      - 'install.ps1'
+      - 'src/**/*.ps1'
+  pull_request:
+    paths:
+      - 'install.ps1'
+      - 'src/**/*.ps1'
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check PowerShell script syntax
+        shell: pwsh
+        run: |
+          $errors = $false
+          $scripts = Get-ChildItem -Recurse -Filter "*.ps1" | Select-Object -ExpandProperty FullName
+          foreach ($script in $scripts) {
+            $result = & powershell -NoProfile -NonInteractive -Command "[System.Management.Automation.PSParser]::Tokenize((Get-Content '$script'), [ref]$null)"
+            if (-not $?) {
+              Write-Host "❌ Syntax error in: $script"
+              $errors = $true
+            } else {
+              Write-Host "✅ $((Get-Item $script).Name) — syntax OK"
+            }
+          }
+          if ($errors) { exit 1 }
+
+      - name: Check Python server syntax
+        shell: pwsh
+        run: |
+          python -m py_compile src/Dashboard/server.py
+          Write-Host "✅ server.py — syntax OK"
+
+      - name: Validate file structure
+        shell: pwsh
+        run: |
+          $required = @(
+            'install.ps1',
+            'README.md',
+            'LICENSE',
+            'src/Dashboard/server.py',
+            'src/Dashboard/index.html',
+            'src/AgentTray/agent-tray.ps1',
+            'src/AgentService/agent-startup.ps1',
+            'src/AgentService/install-service.ps1',
+            'src/KernelDriver/hermes_core.c',
+            'src/KernelDriver/ioctl.h',
+            'skills/system-health.md',
+            '.github/workflows/build-driver.yml'
+          )
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+          if ($missing) {
+            Write-Host "❌ Missing files: $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "✅ All required files present"

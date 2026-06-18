@@ -270,13 +270,14 @@ The kernel driver `HermesCore.sys` enables deep OS integration:
 - Registry change callbacks
 - System event notifications piped to Hermes
 
-**Building requires**: Windows Driver Kit (WDK) + Visual Studio.
+## 🛠️ Optional: Kernel Driver (HermesCore.sys)
+
+For deeper OS integration, install the kernel driver:
 
 ```powershell
-# Prerequisites (one-time)
-winget install "Windows Driver Kit" -s msstore
+# Download pre-built driver from Releases (no WDK needed!)
+# Or build yourself:
 
-# Build
 cd src\KernelDriver
 build.bat
 
@@ -285,8 +286,11 @@ sc create HermesCore type= kernel binPath= "C:\Program Files\AgenticWindows\Herm
 sc start HermesCore
 ```
 
-> ⚠️ The kernel driver requires test-signing mode enabled. The installer can do this for you:
-> `bcdedit /set testsigning on`
+> ✅ **Pre-built drivers are available from the Releases page** — the GitHub Actions CI
+> automatically builds `HermesCore.sys` on every release using the Windows Driver Kit.
+> No WDK setup needed for end users.
+>
+> ⚠️ Requires test-signing mode: `bcdedit /set testsigning on`
 
 ---
 
@@ -341,7 +345,7 @@ agentic-windows/
 - [x] Web-based agentic dashboard
 - [x] Pre-loaded system management skills
 - [x] One-command installer
-- [ ] Kernel driver (HermesCore.sys) — process monitoring
+- [x] Kernel driver CI (HermesCore.sys) — auto-built on GitHub Actions
 - [ ] Custom credential provider — agent on login screen
 - [ ] Voice wake word ("Hey Agent")
 - [ ] Agent shell replacement (explorer.exe alternative)

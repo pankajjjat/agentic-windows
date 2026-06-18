@@ -1,0 +1,65 @@
+name: Build Kernel Driver (HermesCore.sys)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: 'Sign driver for production use (requires certificate secret)'
+        type: boolean
+        default: false
+
+env:
+  SOLUTION: src/KernelDriver/HermesCore.vcxproj
+  PLATFORM: x64
+  CONFIGURATION: Release
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build HermesCore.sys
+        shell: cmd
+        run: |
+          msbuild "%SOLUTION%" /p:Configuration=%CONFIGURATION% /p:Platform=%PLATFORM% /p:WindowsTargetPlatformVersion=10.0 /m
+
+      - name: Upload driver artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesCore-x64
+          path: Release/HermesCore.sys
+          retention-days: 90
+
+  sign:
+    if: ${{ github.event.inputs.sign == 'true' && github.event_name == 'workflow_dispatch' }}
+    needs: build
+    runs-on: windows-2022
+    steps:
+      - name: Download built artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: HermesCore-x64
+
+      - name: Sign driver
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.DRIVER_SIGNING_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.DRIVER_SIGNING_PASSWORD }}
+        run: |
+          $pfxPath = "$env:RUNNER_TEMP\driver.pfx"
+          [Convert]::FromBase64String($env:PFX_BASE64) | Set-Content -Path $pfxPath -AsByteStream
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /v /fd SHA256 /a /f $pfxPath /p "$env:PFX_PASSWORD" /t http://timestamp.digicert.com HermesCore.sys
+
+      - name: Upload signed driver
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesCore-signed-x64
+          path: HermesCore.sys
+          retention-days: 90
