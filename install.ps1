@@ -311,14 +311,16 @@ function Install-AgenticWindows {
     if (Get-Command "hermes" -ErrorAction SilentlyContinue) {
         Write-Step "Setting up scheduled health check cron jobs"
         try {
-            # Try to create crons (Hermes cron CLI accepts schedule as first arg)
-            $null = & hermes cron create "every 6h" --prompt "Run disk-guardian skill. Report if any drive exceeds 85% capacity." 2>$null
+            # Try to create crons with verified Hermes CLI syntax
+            # hermes cron create SCHEDULE [prompt] [--name] [--skill]
+
+            $result = & hermes cron create "every 6h" --name "disk-health-check" --prompt "Run disk-guardian skill. Report if any drive exceeds 85% capacity." 2>$null
             if ($LASTEXITCODE -eq 0) { Write-Info "    Cron: disk-health-check (every 6h)" }
 
-            $null = & hermes cron create "every 24h" --prompt "Run system-health skill. Report any critical system issues." 2>$null
+            $result = & hermes cron create "every 24h" --name "system-health-check" --prompt "Run system-health skill. Report any critical system issues." 2>$null
             if ($LASTEXITCODE -eq 0) { Write-Info "    Cron: system-health-check (every 24h)" }
 
-            $null = & hermes cron create "every 2h" --prompt "Run memory-watchdog skill. Report if memory usage exceeds 85%." 2>$null
+            $result = & hermes cron create "every 2h" --name "memory-watch" --prompt "Run memory-watchdog skill. Report if memory usage exceeds 85%." 2>$null
             if ($LASTEXITCODE -eq 0) { Write-Info "    Cron: memory-watch (every 2h)" }
 
             Write-Good "Health check cron jobs created"

@@ -16,14 +16,19 @@ import socketserver
 import subprocess
 import sys
 import tempfile
+import threading
 import time
-import urllib.parse
-import wave
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from io import BytesIO
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from threading import Thread
 
+# ── ANSI escape code stripper ──
+ANSI_RE = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
+
+def strip_ansi(text):
+    """Remove ANSI escape sequences from text."""
+    return ANSI_RE.sub('', text)
+
+import urllib.parse
 # ── Configuration ──
 PORT = int(os.environ.get("DASHBOARD_PORT", "4774"))
 STATIC_DIR = Path(__file__).parent
@@ -174,7 +179,7 @@ def chat_with_hermes(message):
         escaped = message.replace("'", "''")
         ps_cmd = (
             f"$msg = '{escaped}'\n"
-            f"try {{ $result = $msg | & {HERMES_CMD} run 2>&1; "
+            f"try {{ $result = & {HERMES_CMD} chat -q $msg -Q 2>$null; "
             f"Write-Output $result }} "
             f"catch {{ Write-Error $_.Exception.Message }}"
         )
@@ -184,7 +189,7 @@ def chat_with_hermes(message):
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         response = result.stdout.strip() or result.stderr.strip() or "No response."
-        return {"response": response, "exitCode": result.returncode,
+        return {"response": strip_ansi(response), "exitCode": result.returncode,
                 "commands": extract_commands(response)}
     except subprocess.TimeoutExpired:
         return {"response": "⏱️ Agent timed out after 300 seconds.", "commands": []}
@@ -207,7 +212,7 @@ def stream_hermes_to_client(message, wfile):
         escaped = message.replace("'", "''")
         ps_cmd = (
             f"$msg = '{escaped}'\n"
-            f"try {{ $result = $msg | & {HERMES_CMD} run 2>&1; "
+            f"try {{ $result = & {HERMES_CMD} chat -q $msg -Q 2>$null; "
             f"Write-Output $result }} "
             f"catch {{ Write-Error $_.Exception.Message }}"
         )
@@ -222,8 +227,11 @@ def stream_hermes_to_client(message, wfile):
         for line in iter(proc.stdout.readline, ""):
             if line:
                 chunk = line.rstrip("\r\n")
-                full_text += chunk + "\n"
-                event = json.dumps({"type": "token", "text": chunk})
+                cleaned = strip_ansi(chunk).strip()
+                if not cleaned:
+                    continue
+                full_text += cleaned + "\n"
+                event = json.dumps({"type": "token", "text": cleaned})
                 wfile.write(f"data: {event}\n\n".encode())
                 wfile.flush()
 
