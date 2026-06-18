@@ -31,3 +31,4 @@ logs/
 # Temp
 temp/
 tmp/
+.hermes/
