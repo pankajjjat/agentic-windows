@@ -47,7 +47,8 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Install
 | **Global Hotkey** | `Win+Space` anywhere invokes the agent overlay |
 | **System Tray** | Agent icon in system tray — quick access, status info |
 | **PowerShell Profile** | `hermes` command available in every terminal |
-| **Scheduled Health Checks** | Cron jobs for disk, memory, network, updates |
+| **Scheduled Health Checks** | Cron jobs for disk, memory, system health | 
+| **OpenCode Integration** | `code-agent` command — coding agent CLI |
 | **Kernel Driver** (optional) | Process/thread monitoring via kernel callbacks |
 
 ### 🖥️ Agentic Dashboard
@@ -301,14 +302,14 @@ agentic-windows/
 ├── README.md                 # This file
 ├── LICENSE                   # MIT License
 ├── install.ps1               # One-command installer
-├── uninstall.ps1             # Clean removal
+├── uninstall.ps1             # Clean removal — now exists!
 ├── src/
 │   ├── AgentService/         # System service components
 │   ├── AgentTray/            # Tray app + global hotkey
-│   ├── Dashboard/            # Web dashboard
-│   └── KernelDriver/         # Kernel driver (WDK)
-├── skills/                   # Pre-loaded Hermes skills
-├── config/                   # Configuration files
+│   ├── Dashboard/            # Web dashboard (SSE streaming)
+│   └── KernelDriver/         # Kernel driver (CI-built WDK)
+├── skills/                   # 9 Pre-loaded Hermes skills
+├── .github/workflows/        # CI: build driver + validate syntax
 └── docs/                     # Documentation
 ```
 

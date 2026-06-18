@@ -264,7 +264,9 @@ function Install-AgenticWindows {
         "memory-watchdog",
         "network-monitor",
         "update-manager",
-        "dev-quickstart"
+        "dev-quickstart",
+        "services-manager",
+        "cleanup-tool"
     )
     foreach ($skill in $skillNames) {
         $skillUrl = "$REPO_URL/skills/$skill.md"
@@ -292,6 +294,44 @@ function Install-AgenticWindows {
     Ensure-Directory $configDir
     if (Download-File $configUrl "$configDir\config.yaml") {
         Write-Good "Hermes config updated"
+    }
+
+    # ── Set up scheduled health check cron jobs ──
+    if (Get-Command "hermes" -ErrorAction SilentlyContinue) {
+        Write-Step "Setting up scheduled health check cron jobs"
+        try {
+            # Disk health check — every 6 hours
+            hermes cron create `
+                --name "disk-health-check" `
+                --schedule "every 6h" `
+                --prompt "Run disk-guardian skill and report if any drive is above 85% capacity" `
+                --skill "disk-guardian" `
+                --remind false 2>$null
+            Write-Info "    Cron: disk-health-check (every 6h)"
+
+            # System health check — every 24 hours
+            hermes cron create `
+                --name "system-health-check" `
+                --schedule "every 24h" `
+                --prompt "Run system-health skill and report any critical issues" `
+                --skill "system-health" `
+                --remind false 2>$null
+            Write-Info "    Cron: system-health-check (every 24h)"
+
+            # Memory watchdog — every 2 hours
+            hermes cron create `
+                --name "memory-watch" `
+                --schedule "every 2h" `
+                --prompt "Run memory-watchdog skill. Report if memory usage exceeds 85%" `
+                --skill "memory-watchdog" `
+                --remind false 2>$null
+            Write-Info "    Cron: memory-watch (every 2h)"
+
+            Write-Good "Health check cron jobs created"
+        } catch {
+            Write-Warn "Could not create cron jobs (hermes cron may not support these flags): $_"
+            Write-Info "  Cron jobs can be set up manually via: hermes cron --help"
+        }
     }
 
     # ── Set up service (scheduled task) ──
@@ -360,8 +400,17 @@ function agent-dash { Start-Process "http://localhost:$DASHBOARD_PORT" }
 function sys-health { hermes run skill system-health }
 function sys-disk { hermes run skill disk-guardian }
 function sys-process { hermes run skill process-manager }
+function sys-memory { hermes run skill memory-watchdog }
+function sys-network { hermes run skill network-monitor }
+function sys-update { hermes run skill update-manager }
+function sys-services { hermes run skill services-manager }
+function sys-cleanup { hermes run skill cleanup-tool }
+function sys-dev { hermes run skill dev-quickstart }
 
-Write-Host "⚡ Agentic Windows active. Try: agent, sys-health, agent-dash" -ForegroundColor Cyan
+# OpenCode integration
+function code-agent { opencode }
+
+Write-Host "⚡ Agentic Windows active. Try: sys-health, sys-memory, sys-cleanup, code-agent" -ForegroundColor Cyan
 # ── End Agentic Windows ──
 
 "@
@@ -395,7 +444,8 @@ Write-Host "⚡ Agentic Windows active. Try: agent, sys-health, agent-dash" -For
     Write-Host ""
     Write-Host "  Press Win+Space to invoke the agent from anywhere" -ForegroundColor $C_INFO
     Write-Host "  Open dashboard: http://localhost:$DASHBOARD_PORT" -ForegroundColor $C_INFO
-    Write-Host "  Try: sys-health, sys-disk, sys-process in PowerShell" -ForegroundColor $C_INFO
+    Write-Host "  Try: sys-health, sys-disk, sys-memory, sys-services, sys-cleanup" -ForegroundColor $C_INFO
+    Write-Host "  Code agent: code-agent (OpenCode CLI)" -ForegroundColor $C_INFO
     Write-Host "  Ask agent: 'How is my system doing?'" -ForegroundColor $C_INFO
     Write-Host ""
     Write-Host "  Restart your PC to start the agent service." -ForegroundColor $C_WARN
