@@ -1,128 +1,268 @@
 <#
 .SYNOPSIS
-    Startup script for Hermes Agent system service.
-    Called by Scheduled Task at boot. Runs as SYSTEM.
+    Hermes Agent service startup with self-healing watchdog.
+    Runs as SYSTEM via scheduled task at boot.
+    Monitors Hermes and Dashboard processes, restarts on crash,
+    and watches for system events (logon, logoff, shutdown).
 #>
 
 $ErrorActionPreference = "SilentlyContinue"
-$logFile = "$PSScriptRoot\logs\agent-startup-$(Get-Date -Format 'yyyyMMdd').log"
+
+# ═══════════════════════════════════════════
+# Configuration
+# ═══════════════════════════════════════════
+$LOG_DIR = "$PSScriptRoot\logs"
+$MAX_RETRIES = 5                # Max consecutive restart attempts
+$HEALTH_CHECK_INTERVAL = 30     # Seconds between health checks
+$BACKOFF_BASE = 10              # Base seconds for exponential backoff
+
+# Ensure log directory exists
+if (-not (Test-Path $LOG_DIR)) { New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null }
+
+# Log rotation — keep 7 days
+Get-ChildItem "$LOG_DIR\*.log" -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
+$logFile = "$LOG_DIR\agent-service-$(Get-Date -Format 'yyyyMMdd').log"
 
 function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "[$timestamp] $($args[0])" | Out-File -Append -FilePath $logFile
+    $msg = "[$timestamp] $($args[0])"
+    $msg | Out-File -Append -FilePath $logFile -Encoding UTF8
+    Write-Host $msg
 }
 
+function Write-SystemEvent {
+    # Log to Windows Event Log for visibility
+    try {
+        $msg = $args[0]
+        $eventId = $args[1]
+        if (-not (Get-EventLog -LogName Application -Source "AgenticWindows" -ErrorAction SilentlyContinue)) {
+            New-EventLog -LogName Application -Source "AgenticWindows" -ErrorAction SilentlyContinue | Out-Null
+        }
+        Write-EventLog -LogName Application -Source "AgenticWindows" -EventId $eventId -EntryType Information -Message $msg -ErrorAction SilentlyContinue
+    } catch { }
+}
+
+function Start-WithRetry {
+    param(
+        [string]$Name,
+        [string]$FilePath,
+        [string]$Arguments,
+        [string]$WorkDir
+    )
+    $attempt = 0
+    $lastPid = $null
+    while ($attempt -lt $MAX_RETRIES) {
+        $attempt++
+        try {
+            $proc = Start-Process -FilePath $FilePath -ArgumentList $Arguments -WindowStyle Hidden -WorkingDirectory $WorkDir -PassThru
+            $pid = $proc.Id
+            Write-Log "$Name started (PID: $pid, attempt $attempt/$MAX_RETRIES)"
+            $lastPid = $pid
+            return $proc
+        } catch {
+            $wait = [Math]::Min($BACKOFF_BASE * [Math]::Pow(2, $attempt - 1), 120)
+            Write-Log "WARNING: Failed to start $Name (attempt $attempt/$MAX_RETRIES): $($_.Exception.Message)"
+            if ($attempt -lt $MAX_RETRIES) {
+                Write-Log "  Retrying in ${wait}s..."
+                Start-Sleep -Seconds $wait
+            }
+        }
+    }
+    Write-Log "ERROR: $Name failed to start after $MAX_RETRIES attempts"
+    return $null
+}
+
+# ═══════════════════════════════════════════
+# 1. Find Hermes executable
+# ═══════════════════════════════════════════
 Write-Log "Agentic Windows service starting..."
 
-# 1. Find Hermes
-$hermesDirs = @(
+$hermesPaths = @(
     "$env:LOCALAPPDATA\hermes\hermes-agent\Scripts\hermes.exe",
     "$env:LOCALAPPDATA\hermes\bin\hermes.exe",
     "$env:ProgramFiles\hermes\hermes-agent\Scripts\hermes.exe",
-    "$env:ProgramFiles\hermes\bin\hermes.exe"
+    "$env:ProgramFiles\hermes\bin\hermes.exe",
+    "$env:USERPROFILE\.local\bin\hermes.exe",
+    "$env:USERPROFILE\AppData\Roaming\npm\hermes.cmd"
 )
 
 $hermesExe = $null
-foreach ($d in $hermesDirs) {
+foreach ($d in $hermesPaths) {
     if (Test-Path $d) { $hermesExe = $d; break }
 }
 
 if (-not $hermesExe) {
-    Write-Log "ERROR: Hermes executable not found."
+    $hermesExe = (Get-Command "hermes" -ErrorAction SilentlyContinue).Source
+}
+
+if (-not $hermesExe) {
+    Write-Log "ERROR: Hermes executable not found after checking all paths."
+    Write-SystemEvent "Hermes executable not found. Agentic Windows service will not start." 1001
     exit 1
 }
 
 Write-Log "Found Hermes: $hermesExe"
+Write-SystemEvent "Hermes Agent service starting (PID check, binary: $hermesExe)" 1000
 
-# 2. Configure Hermes environment
 $env:HERMES_CONFIG = "$env:LOCALAPPDATA\hermes\config.yaml"
 $env:TERM = "xterm-256color"
 
-# 3. Start Hermes in daemon mode
-try {
-    $process = Start-Process -FilePath $hermesExe `
-        -ArgumentList "run" `
-        -WindowStyle Hidden `
-        -WorkingDirectory "$env:LOCALAPPDATA\hermes" `
-        -PassThru
-    
-    Write-Log "Hermes started (PID: $($process.Id))"
-    
-    # Verify it's running
-    Start-Sleep -Seconds 5
-    if (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) {
-        Write-Log "Hermes is running successfully"
-    } else {
-        Write-Log "WARNING: Hermes process exited unexpectedly"
+$hermesDir = Split-Path (Split-Path $hermesExe -Parent) -Parent
+if (-not $hermesDir) { $hermesDir = "$env:LOCALAPPDATA\hermes" }
+
+# ═══════════════════════════════════════════
+# 2. Start processes
+# ═══════════════════════════════════════════
+Write-Log "Starting Hermes daemon..."
+$hermesProcess = Start-WithRetry -Name "Hermes" -FilePath $hermesExe -Arguments "run" -WorkDir $hermesDir
+Start-Sleep -Seconds 3
+
+# Verify Hermes is responsive
+if ($hermesProcess) {
+    $hermesPid = $hermesProcess.Id
+    if (Get-Process -Id $hermesPid -ErrorAction SilentlyContinue) {
+        Write-Log "Hermes daemon is running (PID: $hermesPid)"
     }
-} catch {
-    Write-Log "ERROR starting Hermes: $($_.Exception.Message)"
 }
 
-# 4. Start Dashboard Server (Python)
+# Dashboard server
 $dashboardServer = "$PSScriptRoot\Dashboard\server.py"
+$dashboardProcess = $null
 if (Test-Path $dashboardServer) {
-    try {
-        $pyExe = "python"
-        # Try to find Python from Hermes environment
-        $pythonPaths = @(
-            "$env:LOCALAPPDATA\hermes\hermes-agent\Scripts\python.exe",
-            "$env:LOCALAPPDATA\hermes\python\python.exe",
-            "python"
-        )
-        foreach ($pp in $pythonPaths) {
-            if (Test-Path $pp) { $pyExe = $pp; break }
+    Write-Log "Starting Dashboard server..."
+    
+    # Find Python
+    $pythonPaths = @(
+        "$env:LOCALAPPDATA\hermes\hermes-agent\Scripts\python.exe",
+        "$env:LOCALAPPDATA\hermes\python\python.exe",
+        "$env:ProgramFiles\Python313\python.exe",
+        "python"
+    )
+    $pyExe = $null
+    foreach ($pp in $pythonPaths) {
+        if (Test-Path $pp) { $pyExe = $pp; break }
+    }
+    if (-not $pyExe) { $pyExe = (Get-Command "python3" -ErrorAction SilentlyContinue).Source }
+    if (-not $pyExe) { $pyExe = (Get-Command "python" -ErrorAction SilentlyContinue).Source }
+    
+    if ($pyExe) {
+        $dashboardProcess = Start-WithRetry -Name "Dashboard" -FilePath $pyExe -Arguments "`"$dashboardServer`"" -WorkDir "$PSScriptRoot\Dashboard"
+        if ($dashboardProcess) {
+            Write-Log "Dashboard server started (PID: $($dashboardProcess.Id))"
         }
-
-        $dashboardProcess = Start-Process -FilePath $pyExe `
-            -ArgumentList "`"$dashboardServer`"" `
-            -WindowStyle Hidden `
-            -PassThru
-        
-        Write-Log "Dashboard server started (PID: $($dashboardProcess.Id))"
-        Start-Sleep -Seconds 2
-    } catch {
-        Write-Log "WARNING: Could not start dashboard server: $($_.Exception.Message)"
+    } else {
+        Write-Log "WARNING: Python not found. Dashboard will not start."
     }
 } else {
     Write-Log "Dashboard server not found at: $dashboardServer"
 }
 
-Write-Log "Agentic Windows service started successfully"
+# ═══════════════════════════════════════════
+# 3. Start WMI system event watcher (background)
+# ═══════════════════════════════════════════
+$wmiScript = @'
+$logFile = "{0}"
+$hermesBin = "{1}"
+$hermesDir = "{2}"
+function Write-Log {{
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "[$timestamp] [WMI-Watcher] $($args[0])" | Out-File -Append -FilePath $logFile -Encoding UTF8
+}}
 
-# Keep this script running so the scheduled task stays alive
-$hermesProcess = $process
-$dashProcess = $dashboardProcess
+# Watch for system events
+$queries = @(
+    # Logon/Logoff events (Event ID 7001, 7002 for Terminal Services)
+    "SELECT * FROM Win32_NTLogEvent WHERE LogFile='Security' AND EventCode=4624",
+    # System shutdown (Event ID 1074)
+    "SELECT * FROM Win32_NTLogEvent WHERE LogFile='System' AND EventCode=1074",
+    # Disk warning (Event ID 157)
+    "SELECT * FROM Win32_NTLogEvent WHERE LogFile='System' AND EventCode=157"
+)
+
+Write-Log "WMI Event Watcher started"
+
+foreach ($query in $queries) {{
+    try {{
+        Register-WmiEvent -Query $query -Action {{
+            $event = $EventArgs.NewEvent
+            $msg = "System event: $($event.EventCode) - $($event.Message.Substring(0,[Math]::Min(200, $event.Message.Length)))"
+            Write-Log $msg
+        }} -ErrorAction SilentlyContinue
+    }} catch {{ }}
+}}
+
+# Keep-alive
+while ($true) {{ Start-Sleep -Seconds 300 }}
+'@ -f $logFile, $hermesExe, $hermesDir
+
+$wmiScriptPath = "$PSScriptRoot\wmi-watcher.ps1"
+$wmiScript | Out-File -FilePath $wmiScriptPath -Encoding UTF8 -Force
+$wmiProcess = Start-Process -FilePath "powershell" -ArgumentList "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$wmiScriptPath`"" -PassThru
+Write-Log "WMI event watcher started (PID: $($wmiProcess.Id))"
+
+# ═══════════════════════════════════════════
+# 4. Watchdog loop — self-healing
+# ═══════════════════════════════════════════
+Write-Log "Watchdog loop started (check interval: ${HEALTH_CHECK_INTERVAL}s)"
+Write-SystemEvent "Agentic Windows service started successfully. Watchdog active." 1002
+
+$hermesRestartCount = 0
+$dashboardRestartCount = 0
+$lastRestartTime = @{}
 
 while ($true) {
-    Start-Sleep -Seconds 60
+    Start-Sleep -Seconds $HEALTH_CHECK_INTERVAL
+    $now = Get-Date
     
-    # Health check: restart Hermes if it crashed
+    # ── Hermes health check ──
     if ($hermesProcess -and -not (Get-Process -Id $hermesProcess.Id -ErrorAction SilentlyContinue)) {
-        Write-Log "Hermes process died. Restarting..."
-        try {
-            $hermesProcess = Start-Process -FilePath $hermesExe `
-                -ArgumentList "run" `
-                -WindowStyle Hidden `
-                -WorkingDirectory "$env:LOCALAPPDATA\hermes" `
-                -PassThru
-            Write-Log "Restarted Hermes (PID: $($hermesProcess.Id))"
-        } catch {
-            Write-Log "ERROR restarting Hermes: $($_.Exception.Message)"
+        $hermesRestartCount++
+        $waitTime = [Math]::Min($BACKOFF_BASE * $hermesRestartCount, 300)
+        Write-Log "WARNING: Hermes process died (restart #$hermesRestartCount). Restarting in ${waitTime}s..."
+        Write-SystemEvent "Hermes Agent crashed. Restart attempt #$hermesRestartCount." 1003
+        
+        Start-Sleep -Seconds $waitTime
+        
+        # Kill any orphaned Hermes processes
+        Get-Process -Name "hermes" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Id -ne $hermesProcess.Id } |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+        
+        $hermesProcess = Start-WithRetry -Name "Hermes" -FilePath $hermesExe -Arguments "run" -WorkDir $hermesDir
+    } else {
+        # Reset counter on stable run
+        $hermesRestartCount = [Math]::Max(0, $hermesRestartCount - 1)
+    }
+    
+    # ── Dashboard health check ──
+    if ($dashboardProcess -and -not (Get-Process -Id $dashboardProcess.Id -ErrorAction SilentlyContinue)) {
+        $dashboardRestartCount++
+        Write-Log "WARNING: Dashboard server died (restart #$dashboardRestartCount). Restarting..."
+        if ($pyExe) {
+            $dashboardProcess = Start-WithRetry -Name "Dashboard" -FilePath $pyExe -Arguments "`"$dashboardServer`"" -WorkDir "$PSScriptRoot\Dashboard"
+            $dashboardRestartCount = 0
         }
     }
     
-    # Health check: restart dashboard if it crashed
-    if ($dashProcess -and -not (Get-Process -Id $dashProcess.Id -ErrorAction SilentlyContinue)) {
-        Write-Log "Dashboard server died. Restarting..."
-        try {
-            $dashProcess = Start-Process -FilePath $pyExe `
-                -ArgumentList "`"$dashboardServer`"" `
-                -WindowStyle Hidden `
-                -PassThru
-            Write-Log "Restarted dashboard (PID: $($dashProcess.Id))"
-        } catch {
-            Write-Log "ERROR restarting dashboard: $($_.Exception.Message)"
+    # ── WMI watcher health check ──
+    if ($wmiProcess -and -not (Get-Process -Id $wmiProcess.Id -ErrorAction SilentlyContinue)) {
+        Write-Log "WMI watcher died. Restarting..."
+        $wmiProcess = Start-Process -FilePath "powershell" -ArgumentList "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$wmiScriptPath`"" -PassThru
+        Write-Log "WMI watcher restarted (PID: $($wmiProcess.Id))"
+    }
+    
+    # ── Reset counter after 1 hour of stability ──
+    if ($hermesRestartCount -gt 0 -and (Get-Process -Id $hermesProcess.Id -ErrorAction SilentlyContinue)) {
+        $stable = $true
+        if ($stable -and ($now - $lastRestartTime.Hermes).TotalMinutes -gt 60) {
+            $hermesRestartCount = 0
+            Write-Log "Hermes stable for 60+ minutes. Restart counter reset."
         }
     }
 }
+
+# Keep script alive
+Wait-Process -Id $hermesProcess.Id -ErrorAction SilentlyContinue

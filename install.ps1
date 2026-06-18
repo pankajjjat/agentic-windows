@@ -266,7 +266,8 @@ function Install-AgenticWindows {
         "update-manager",
         "dev-quickstart",
         "services-manager",
-        "cleanup-tool"
+        "cleanup-tool",
+        "everything-search"
     )
     foreach ($skill in $skillNames) {
         $skillUrl = "$REPO_URL/skills/$skill.md"
@@ -405,6 +406,7 @@ function sys-network { hermes run skill network-monitor }
 function sys-update { hermes run skill update-manager }
 function sys-services { hermes run skill services-manager }
 function sys-cleanup { hermes run skill cleanup-tool }
+function sys-search { hermes run skill everything-search }
 function sys-dev { hermes run skill dev-quickstart }
 
 # OpenCode integration
@@ -444,7 +446,8 @@ Write-Host "⚡ Agentic Windows active. Try: sys-health, sys-memory, sys-cleanup
     Write-Host ""
     Write-Host "  Press Win+Space to invoke the agent from anywhere" -ForegroundColor $C_INFO
     Write-Host "  Open dashboard: http://localhost:$DASHBOARD_PORT" -ForegroundColor $C_INFO
-    Write-Host "  Try: sys-health, sys-disk, sys-memory, sys-services, sys-cleanup" -ForegroundColor $C_INFO
+    Write-Host "  Try: sys-health, sys-disk, sys-memory, sys-search, sys-cleanup" -ForegroundColor $C_INFO
+    Write-Host "  Voice: Click 🎤 mic button in Dashboard (STT via Whisper)" -ForegroundColor $C_INFO
     Write-Host "  Code agent: code-agent (OpenCode CLI)" -ForegroundColor $C_INFO
     Write-Host "  Ask agent: 'How is my system doing?'" -ForegroundColor $C_INFO
     Write-Host ""

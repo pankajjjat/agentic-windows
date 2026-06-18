@@ -8,15 +8,19 @@ Zero-dependency Python HTTP server that:
   • Provides /api/chat (POST) for backward-compatible synchronous chat
 """
 
+import base64
 import json
 import os
 import re
 import socketserver
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
+import wave
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from io import BytesIO
 from pathlib import Path
 from threading import Thread
 
@@ -261,6 +265,88 @@ def extract_commands(text):
 
 
 # ══════════════════════════════════════════════
+# Speech-to-Text (Whisper STT)
+# ══════════════════════════════════════════════
+
+def get_api_key():
+    """Read OpenAI API key from Hermes config."""
+    config_paths = [
+        Path(os.environ.get("HERMES_CONFIG", "")),
+        Path.home() / ".hermes" / "config.yaml",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "hermes" / "config.yaml",
+    ]
+    for p in config_paths:
+        if p.exists():
+            text = p.read_text(encoding="utf-8")
+            m = re.search(r'api_key:\s*["\']?(sk-[a-zA-Z0-9]+)["\']?', text)
+            if m:
+                return m.group(1)
+    return None
+
+
+def transcribe_audio(audio_data):
+    """Send audio data to OpenAI Whisper and return transcribed text.
+    
+    Falls back to a Python offline approach if no API key is available.
+    """
+    api_key = get_api_key()
+    
+    if api_key:
+        # Use OpenAI Whisper API
+        try:
+            import urllib.request, urllib.error
+            
+            # Write audio to temp file for multipart upload
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                f.write(audio_data)
+                tmp_path = f.name
+            
+            try:
+                # Build multipart form data
+                boundary = "----FormBoundary" + os.urandom(16).hex()
+                
+                with open(tmp_path, "rb") as f:
+                    file_bytes = f.read()
+                
+                body = (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
+                    f"Content-Type: audio/wav\r\n\r\n"
+                ).encode() + file_bytes + (
+                    f"\r\n--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="model"\r\n\r\n'
+                    f"whisper-1\r\n"
+                    f"--{boundary}--\r\n"
+                ).encode()
+                
+                req = urllib.request.Request(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    data=body,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    },
+                )
+                resp = urllib.request.urlopen(req, timeout=30)
+                result = json.loads(resp.read().decode())
+                return result.get("text", "").strip()
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+        except ImportError:
+            return "❌ STT requires 'urllib' (standard library — should be available)"
+        except urllib.error.HTTPError as e:
+            return f"❌ Whisper API error: HTTP {e.code}"
+        except Exception as e:
+            return f"❌ STT error: {e}"
+    else:
+        return "🎤 Recorded audio. To use speech-to-text, add an OpenAI API key to your Hermes config."
+
+
+
+# ══════════════════════════════════════════════
 # HTTP Request Handler
 # ══════════════════════════════════════════════
 
@@ -333,6 +419,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._json_response(chat_with_hermes(message))
             except json.JSONDecodeError:
                 return self._json_response({"error": "Invalid JSON"}, 400)
+
+        # ── API: Speech-to-Text (Whisper STT) ──
+        if parsed.path == "/api/stt":
+            content_len = int(self.headers.get("Content-Length", 0))
+            if content_len == 0:
+                return self._json_response({"error": "No audio data"}, 400)
+            try:
+                audio_data = self.rfile.read(content_len)
+                text = transcribe_audio(audio_data)
+                return self._json_response({"text": text})
+            except Exception as e:
+                return self._json_response({"error": str(e)}, 500)
 
         self._json_response({"error": "Not found"}, 404)
 

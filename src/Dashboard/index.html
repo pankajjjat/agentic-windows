@@ -260,6 +260,9 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .chat-input-area button:hover { opacity: 0.9; }
+.mic-button { background: none !important; border: none !important; font-size: 1.2em; cursor: pointer; padding: 0 8px; }
+.mic-button.recording { color: #ff4444; animation: pulse 1s infinite; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
 /* Quick actions */
 .actions-grid {
@@ -461,8 +464,12 @@ a:hover { text-decoration: underline; }
 Try asking: "How is my system doing?" or "Show me running processes"</div>
       </div>
       <div class="chat-input-area">
-        <input type="text" id="chatInput" placeholder="Ask the agent anything..." autocomplete="off">
+        <input type="text" id="chatInput" placeholder="Ask the agent anything... or click 🎤 to speak" autocomplete="off">
+        <button id="micBtn" class="mic-button" onclick="toggleRecording()" title="Voice input (STT)">🎤</button>
         <button onclick="sendChat()">Send</button>
+      </div>
+      <div id="recordingIndicator" style="display:none; color:var(--accent); font-size:0.8em; padding:4px 8px;">
+        🔴 Recording... click 🎤 to stop
       </div>
     </div>
   </div>
@@ -582,6 +589,86 @@ document.querySelectorAll('.nav-item').forEach(item => {
     document.getElementById('sec-' + item.dataset.section).classList.add('active');
   });
 });
+
+// ══════════════════════════════════════════════════════════
+// Voice Recording (STT)
+// ══════════════════════════════════════════════════════════
+let mediaRecorder = null;
+let audioChunks = [];
+
+function toggleRecording() {
+  const micBtn = document.getElementById('micBtn');
+  const indicator = document.getElementById('recordingIndicator');
+
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    // Stop recording
+    mediaRecorder.stop();
+    micBtn.classList.remove('recording');
+    indicator.style.display = 'none';
+    micBtn.textContent = '🎤';
+    return;
+  }
+
+  // Start recording
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    addMessage('system', '🎤 Microphone access not supported in this browser.');
+    return;
+  }
+
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        // Stop all tracks
+        stream.getTracks().forEach(t => t.stop());
+
+        // Convert to blob
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        if (audioBlob.size < 100) return; // too short
+
+        addMessage('system', '🎤 Transcribing...');
+
+        // Send to server
+        fetch('/api/stt', {
+          method: 'POST',
+          body: audioBlob,
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.text && !data.text.startsWith('❌')) {
+              document.getElementById('chatInput').value = data.text;
+              // Auto-send if we got good transcription
+              sendChat();
+            } else {
+              addMessage('system', data.text || '🎤 No speech detected.');
+            }
+          })
+          .catch(err => {
+            addMessage('system', '🎤 Transcription failed: ' + err.message);
+          });
+      };
+
+      mediaRecorder.onerror = () => {
+        addMessage('system', '🎤 Recording error occurred.');
+        micBtn.classList.remove('recording');
+        indicator.style.display = 'none';
+      };
+
+      mediaRecorder.start();
+      micBtn.classList.add('recording');
+      indicator.style.display = 'block';
+      micBtn.textContent = '⏹️';
+    })
+    .catch(err => {
+      addMessage('system', '🎤 Microphone access denied: ' + err.message);
+    });
+}
 
 // ══════════════════════════════════════════════════════════
 // Chat via SSE streaming (realtime) + POST fallback
