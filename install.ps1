@@ -158,6 +158,9 @@ function Install-AgenticWindows {
             $tempFile = "$env:TEMP\install-hermes.ps1"
             $installScript.Content | Out-File -FilePath $tempFile -Encoding utf8
             & powershell -ExecutionPolicy Bypass -File $tempFile
+            if ($LASTEXITCODE -ne 0) {
+                throw "Hermes installer exited with code $LASTEXITCODE"
+            }
             Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
             Write-Good "Hermes Agent installed"
         } catch {
@@ -289,49 +292,40 @@ function Install-AgenticWindows {
         Write-Good "Dashboard files installed"
     }
 
-    # Download config
+    # Download config (only if not already configured — preserve user's API key)
     $configUrl = "$REPO_URL/config/hermes-config.yaml"
-    $configDir = "$env:LOCALAPPDATA\hermes"
-    Ensure-Directory $configDir
-    if (Download-File $configUrl "$configDir\config.yaml") {
-        Write-Good "Hermes config updated"
+    $configDir = "$env:LOCALAPPDATA\\hermes"
+    $configFile = "$configDir\\config.yaml"
+    if (Test-Path $configFile) {
+        Write-Info "Hermes config already exists at $configFile — preserving existing config"
+        Write-Info "  To reset config, delete $configFile and re-run installer"
+    } else {
+        Ensure-Directory $configDir
+        if (Download-File $configUrl $configFile) {
+            Write-Good "Hermes config created at $configFile"
+            Write-Info "  Edit API keys: hermes config edit"
+        }
     }
 
     # ── Set up scheduled health check cron jobs ──
     if (Get-Command "hermes" -ErrorAction SilentlyContinue) {
         Write-Step "Setting up scheduled health check cron jobs"
         try {
-            # Disk health check — every 6 hours
-            hermes cron create `
-                --name "disk-health-check" `
-                --schedule "every 6h" `
-                --prompt "Run disk-guardian skill and report if any drive is above 85% capacity" `
-                --skill "disk-guardian" `
-                --remind false 2>$null
-            Write-Info "    Cron: disk-health-check (every 6h)"
+            # Try to create crons (Hermes cron CLI accepts schedule as first arg)
+            $null = & hermes cron create "every 6h" --prompt "Run disk-guardian skill. Report if any drive exceeds 85% capacity." 2>$null
+            if ($LASTEXITCODE -eq 0) { Write-Info "    Cron: disk-health-check (every 6h)" }
 
-            # System health check — every 24 hours
-            hermes cron create `
-                --name "system-health-check" `
-                --schedule "every 24h" `
-                --prompt "Run system-health skill and report any critical issues" `
-                --skill "system-health" `
-                --remind false 2>$null
-            Write-Info "    Cron: system-health-check (every 24h)"
+            $null = & hermes cron create "every 24h" --prompt "Run system-health skill. Report any critical system issues." 2>$null
+            if ($LASTEXITCODE -eq 0) { Write-Info "    Cron: system-health-check (every 24h)" }
 
-            # Memory watchdog — every 2 hours
-            hermes cron create `
-                --name "memory-watch" `
-                --schedule "every 2h" `
-                --prompt "Run memory-watchdog skill. Report if memory usage exceeds 85%" `
-                --skill "memory-watchdog" `
-                --remind false 2>$null
-            Write-Info "    Cron: memory-watch (every 2h)"
+            $null = & hermes cron create "every 2h" --prompt "Run memory-watchdog skill. Report if memory usage exceeds 85%." 2>$null
+            if ($LASTEXITCODE -eq 0) { Write-Info "    Cron: memory-watch (every 2h)" }
 
             Write-Good "Health check cron jobs created"
         } catch {
-            Write-Warn "Could not create cron jobs (hermes cron may not support these flags): $_"
-            Write-Info "  Cron jobs can be set up manually via: hermes cron --help"
+            Write-Warn "Could not create cron jobs via CLI: $_"
+            Write-Info "  Create manually: hermes cron create 'every 6h'"
+            Write-Info "  See hermes cron --help for details"
         }
     }
 
