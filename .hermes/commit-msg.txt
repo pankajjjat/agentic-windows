@@ -1,0 +1,20 @@
+Round 3: Everything Search, STT, provider wizard, watchdog, WMI events
+
+Fills the remaining gaps from the original vision:
+
+1. Everything Search skill (NEW) - replaces Windows Search with instant
+   file search via voidtools Everything CLI (sys-search alias)
+2. Voice input (NEW) - microphone button in dashboard, records audio
+   via MediaRecorder, sends to server stt endpoint which uses
+   OpenAI Whisper API (reads key from Hermes config)
+3. AI provider wizard (NEW) - config/setup-provider.ps1 interactive setup
+   8 providers: Nous, OpenAI, Anthropic, OpenRouter, Gemini, Groq,
+   DeepSeek, Together + Custom option. Tests connection after config.
+4. Self-healing watchdog (UPGRADED) - exponential backoff on restart,
+   max 5 retries, 60-min stability reset, Event Log integration,
+   log rotation (7 days), 5 search paths for Hermes binary
+5. WMI event watcher (NEW) - background PowerShell script monitors
+   system events (logon 4624, shutdown 1074, disk warning 157)
+   and logs them. Auto-restarts if it crashes.
+6. API key auto-detect for stt - reads openai key from config.yaml
+   at multiple paths, uses Whisper API for transcription

@@ -47,7 +47,12 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Install
 | **Global Hotkey** | `Win+Space` anywhere invokes the agent overlay |
 | **System Tray** | Agent icon in system tray — quick access, status info |
 | **PowerShell Profile** | `hermes` command available in every terminal |
-| **Scheduled Health Checks** | Cron jobs for disk, memory, system health | 
+| **Scheduled Health Checks** | Cron jobs for disk, memory, system health |
+| **Everything Search** | `sys-search` — instant file search via voidtools |
+| **Voice Input (STT)** | 🎤 microphone button in dashboard speaks via Whisper |
+| **AI Provider Wizard** | `config/setup-provider.ps1` — interactive setup for 8 providers |
+| **Self-Healing Watchdog** | Auto-restart on crash, exponential backoff, Event Log |
+| **System Event Watcher** | WMI monitor for logon, shutdown, disk alerts |
 | **OpenCode Integration** | `code-agent` command — coding agent CLI |
 | **Kernel Driver** (optional) | Process/thread monitoring via kernel callbacks |
 
@@ -308,7 +313,7 @@ agentic-windows/
 │   ├── AgentTray/            # Tray app + global hotkey
 │   ├── Dashboard/            # Web dashboard (SSE streaming)
 │   └── KernelDriver/         # Kernel driver (CI-built WDK)
-├── skills/                   # 9 Pre-loaded Hermes skills
+├── skills/                   # 10 Pre-loaded Hermes skills
 ├── .github/workflows/        # CI: build driver + validate syntax
 └── docs/                     # Documentation
 ```
